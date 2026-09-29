@@ -1,0 +1,95 @@
+{
+  "name": "chatgpt-commit-gen",
+  "displayName": "ChatGPT Commit Gen",
+  "description": "Generate Conventional Commit messages from staged Git changes using your ChatGPT subscription.",
+  "version": "0.2.0",
+  "publisher": "IGUNUBLUE",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IGUNUBLUE/chatgpt-commit-gen"
+  },
+  "homepage": "https://github.com/IGUNUBLUE/chatgpt-commit-gen",
+  "bugs": {
+    "url": "https://github.com/IGUNUBLUE/chatgpt-commit-gen/issues"
+  },
+  "keywords": [
+    "git",
+    "commit",
+    "conventional-commits",
+    "chatgpt",
+    "openai",
+    "ai"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "commitGenerator.generate",
+        "title": "Generate Commit Message",
+        "category": "Commit Generator",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "commitGenerator.signIn",
+        "title": "Sign in with ChatGPT",
+        "category": "Commit Generator"
+      },
+      {
+        "command": "commitGenerator.signOut",
+        "title": "Sign out of ChatGPT",
+        "category": "Commit Generator"
+      },
+      {
+        "command": "commitGenerator.setModel",
+        "title": "Set Model",
+        "category": "Commit Generator"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "commitGenerator.generate",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Commit Generator",
+      "properties": {
+        "commitGenerator.model": {
+          "type": "string",
+          "default": "gpt-6-luna",
+          "description": "Model slug served by your ChatGPT subscription (e.g. gpt-6-luna, gpt-6-sol, gpt-5.6-terra)."
+        },
+        "commitGenerator.maxDiffChars": {
+          "type": "number",
+          "default": 12000,
+          "description": "Maximum number of diff characters sent to the model. Longer diffs are truncated."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.2",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#bg)"/>
+  <!-- git branch: main line with a branch off -->
+  <g stroke="#ffffff" stroke-width="16" stroke-linecap="round" opacity="0.92" fill="none">
+    <path d="M84 96 V168"/>
+    <path d="M84 120 C84 150, 128 144, 152 128 C168 118, 176 106, 178 96"/>
+  </g>
+  <!-- commit nodes -->
+  <circle cx="84" cy="88" r="22" fill="#ffffff"/>
+  <circle cx="84" cy="176" r="22" fill="#ffffff"/>
+  <circle cx="178" cy="88" r="16" fill="#c7d2fe"/>
+  <!-- sparkle -->
+  <path fill="url(#spark)" d="M196 118 c4 22 16 34 38 38 -22 4 -34 16 -38 38 -4 -22 -16 -34 -38 -38 22 -4 34 -16 38 -38 z"/>
+  <path fill="url(#spark)" d="M216 56 c1.6 8.8 6.4 13.6 15.2 15.2 -8.8 1.6 -13.6 6.4 -15.2 15.2 -1.6 -8.8 -6.4 -13.6 -15.2 -15.2 8.8 -1.6 13.6 -6.4 15.2 -15.2 z"/>
+</svg>
