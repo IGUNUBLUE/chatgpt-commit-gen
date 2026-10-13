@@ -9,6 +9,7 @@ VS Code / VSCodium extension (public repo: github.com/IGUNUBLUE/chatgpt-commit-g
 - `src/responses.ts` — `POST https://chatgpt.com/backend-api/codex/responses` (Responses API + SSE) with `Authorization`/`ChatGPT-Account-Id`/`originator` headers; retries once on 401 after refresh; `AbortSignal.any` timeout+cancel.
 - `src/git.ts` — built-in `vscode.git` API (repo pick + input box) and `git diff --cached` via `execFile`.
 - `src/prompt.ts` — system prompt enforcing Conventional Commits 1.0.0.
+- `src/star.ts` — one-time GitHub star notification (`globalState` key `commitGenerator.starPromptShown`, synced).
 - `media/icon.svg|png` — extension icon (branch + sparkle, violet gradient).
 
 ## Commands

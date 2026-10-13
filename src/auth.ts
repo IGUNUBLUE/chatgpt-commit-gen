@@ -60,7 +60,16 @@ async function postToken(
         ? new URLSearchParams(body).toString()
         : JSON.stringify(body),
   });
-  const data = (await response.json()) as TokenEndpointResponse;
+  const raw = await response.text();
+  let data: TokenEndpointResponse;
+  try {
+    data = JSON.parse(raw) as TokenEndpointResponse;
+  } catch {
+    // Gateways/CDNs may answer with HTML on 5xx.
+    throw new Error(
+      `Token endpoint returned ${response.status}: ${raw.slice(0, 200)}`,
+    );
+  }
   if (!response.ok) {
     throw new Error(
       `Token endpoint returned ${response.status}: ${data.error_description ?? data.error ?? "unknown error"}`,
@@ -78,16 +87,20 @@ function accountIdFromIdToken(idToken: string): string | undefined {
 }
 
 function accessTokenExpiry(accessToken: string): number {
-  const claims = decodeJwtPayload(accessToken);
-  return typeof claims.exp === "number"
-    ? claims.exp * 1000
-    : Date.now() + 60 * 60 * 1000;
+  const fallback = Date.now() + 60 * 60 * 1000;
+  try {
+    const claims = decodeJwtPayload(accessToken);
+    return typeof claims.exp === "number" ? claims.exp * 1000 : fallback;
+  } catch {
+    // Opaque (non-JWT) access token: rely on 401 + refresh.
+    return fallback;
+  }
 }
 
-async function tokensFromResponse(
+function tokensFromResponse(
   data: TokenEndpointResponse,
   previousAccountId?: string,
-): Promise<Tokens> {
+): Tokens {
   const accessToken = data.access_token;
   const refreshToken = data.refresh_token;
   const idToken = data.id_token;
@@ -113,12 +126,23 @@ const SUCCESS_HTML =
 
 export class ChatGptAuth {
   private tokens: Tokens | undefined;
+  /** Shared in-flight refresh so concurrent callers don't reuse a rotated refresh token. */
+  private refreshing: Promise<void> | undefined;
 
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
   async load(): Promise<Tokens | undefined> {
     const raw = await this.secrets.get(SECRET_KEY);
-    this.tokens = raw ? (JSON.parse(raw) as Tokens) : undefined;
+    if (!raw) {
+      this.tokens = undefined;
+      return undefined;
+    }
+    try {
+      this.tokens = JSON.parse(raw) as Tokens;
+    } catch {
+      // Corrupted entry: drop it instead of failing activation.
+      await this.clear();
+    }
     return this.tokens;
   }
 
@@ -159,7 +183,14 @@ export class ChatGptAuth {
     }
   }
 
-  private async refresh(): Promise<void> {
+  private refresh(): Promise<void> {
+    this.refreshing ??= this.doRefresh().finally(() => {
+      this.refreshing = undefined;
+    });
+    return this.refreshing;
+  }
+
+  private async doRefresh(): Promise<void> {
     const current = this.tokens;
     if (!current) {
       return;
@@ -172,7 +203,7 @@ export class ChatGptAuth {
       },
       "json",
     );
-    const refreshed = await tokensFromResponse(data, current.accountId);
+    const refreshed = tokensFromResponse(data, current.accountId);
     if (refreshed.accountId !== current.accountId) {
       throw new Error(
         "Refreshed session belongs to a different ChatGPT account. Sign out and sign in again.",
@@ -256,6 +287,8 @@ export class ChatGptAuth {
     authorize.searchParams.set("codex_cli_simplified_flow", "true");
     authorize.searchParams.set("originator", "codex_cli_rs");
 
+    let timer: NodeJS.Timeout | undefined;
+    let cancelSub: vscode.Disposable | undefined;
     try {
       const opened = await vscode.env.openExternal(
         vscode.Uri.parse(authorize.toString()),
@@ -266,24 +299,25 @@ export class ChatGptAuth {
         );
       }
 
+      // `undefined` means the user cancelled.
       const result = await Promise.race([
         callback,
-        new Promise<never>((_, r) =>
-          setTimeout(
+        new Promise<never>((_, r) => {
+          timer = setTimeout(
             () => r(new Error("Login timed out after 5 minutes.")),
             LOGIN_TIMEOUT_MS,
-          ),
-        ),
-        ...(token
-          ? [
-              new Promise<never>((_, r) => {
-                token.onCancellationRequested(() =>
-                  r(new Error("Sign-in cancelled.")),
-                );
-              }),
-            ]
-          : []),
+          );
+        }),
+        new Promise<undefined>((r) => {
+          if (token?.isCancellationRequested) {
+            r(undefined);
+          }
+          cancelSub = token?.onCancellationRequested(() => r(undefined));
+        }),
       ]);
+      if (!result) {
+        return false;
+      }
 
       const data = await postToken(
         {
@@ -296,14 +330,18 @@ export class ChatGptAuth {
         "form",
       );
 
-      this.tokens = await tokensFromResponse(data);
+      this.tokens = tokensFromResponse(data);
       await this.persist();
       vscode.window.showInformationMessage(
         "Signed in to ChatGPT. Commit generation is ready.",
       );
       return true;
     } finally {
+      clearTimeout(timer);
+      cancelSub?.dispose();
       server.close();
+      // Drop browser keep-alive sockets so the port is freed right away.
+      server.closeAllConnections();
     }
   }
 

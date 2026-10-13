@@ -118,6 +118,8 @@ export async function generateWithSubscription(
 
   let response = await postResponses(accessToken, accountId, opts);
   if (response.status === 401) {
+    // Release the unused body before retrying.
+    await response.body?.cancel();
     const refreshed = await opts.auth.refreshAfterUnauthorized();
     if (!refreshed) {
       throw new Error(

@@ -24,7 +24,9 @@ export async function pickRepository(): Promise<Repository | undefined> {
   if (!git) {
     throw new Error("Built-in Git extension not found.");
   }
-  const repos = git.exports.getAPI(1).repositories;
+  // `exports` is undefined until the extension has activated.
+  const exports = git.isActive ? git.exports : await git.activate();
+  const repos = exports.getAPI(1).repositories;
   if (repos.length === 0) {
     vscode.window.showErrorMessage("No Git repository found in this workspace.");
     return undefined;
