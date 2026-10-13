@@ -1,0 +1,49 @@
+# Publishes the extension to Open VSX via Trusted Publishing (OIDC, no PAT).
+# Registration: open-vsx.org → Settings → Trusted Publishers
+#   IGUNUBLUE / chatgpt-commit-gen, workflow "publish.yml", environment "openvsx".
+name: Publish to Open VSX
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-openvsx
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: openvsx
+    permissions:
+      contents: read
+      id-token: write # required to request the OIDC ID token
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check tag matches package.json version
+        if: github.event_name == 'release'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version v${version}"
+            exit 1
+          fi
+
+      - run: npx tsc --noEmit
+
+      - run: npm run package
+
+      - name: Publish
+        run: npx --yes ovsx@1.2.0 publish chatgpt-commit-gen-*.vsix --trusted-publishing

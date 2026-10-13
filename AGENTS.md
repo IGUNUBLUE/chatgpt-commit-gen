@@ -20,7 +20,6 @@ npx tsc --noEmit          # typecheck
 npm run compile           # esbuild bundle -> dist/extension.js
 npm run package           # chatgpt-commit-gen-<version>.vsix
 codium --install-extension chatgpt-commit-gen-<version>.vsix
-npm run publish:openvsx   # needs OVSX_PAT env (create at open-vsx.org/user-settings/tokens)
 ```
 
 ## Conventions
@@ -32,10 +31,9 @@ npm run publish:openvsx   # needs OVSX_PAT env (create at open-vsx.org/user-sett
 - The codex `/codex/responses` endpoint is undocumented; it serves only models allowed by the ChatGPT plan and may change.
 - Commits use Conventional Commits; no AI attribution trailers.
 
-## Open VSX publish (manual today)
+## Release
 
-```bash
-# after signing the Eclipse Publisher Agreement + creating a PAT at open-vsx.org
-npx ovsx create-namespace IGUNUBLUE -p "$OVSX_PAT"
-npx ovsx publish chatgpt-commit-gen-<version>.vsix -p "$OVSX_PAT"
-```
+1. Bump `version` in `package.json` + `CHANGELOG.md`, commit, tag `v<version>`, push.
+2. `gh release create v<version> chatgpt-commit-gen-<version>.vsix --notes ...`
+3. Publishing the release triggers `.github/workflows/publish.yml`, which publishes to Open VSX via Trusted Publishing (OIDC, GitHub environment `openvsx`, no PAT). Tag must equal `v` + package.json version. Can also be run manually (`gh workflow run publish.yml`).
+4. Do not add `OVSX_PAT` anywhere: a PAT takes precedence over trusted publishing.

@@ -84,8 +84,7 @@
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package --no-dependencies",
-    "publish:openvsx": "ovsx publish -p $OVSX_PAT"
+    "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
