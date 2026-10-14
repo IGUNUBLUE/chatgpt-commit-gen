@@ -7,13 +7,16 @@ VS Code / VSCodium extension that generates [Conventional Commits](https://www.c
 1. Run `ChatGPT Commit Gen: Sign in with ChatGPT` — a browser window opens on `auth.openai.com`; approve the sign-in (same OAuth flow as Codex CLI).
 2. Stage your changes in the Source Control view.
 3. Click the ✨ button in the Source Control title bar (or run `ChatGPT Commit Gen: Generate Commit Message`).
-4. The generated message is written into the commit input box.
+4. The message streams live into the commit input box. While it's generating, the ✨ button becomes a spinner; click it to cancel (your previous input is restored).
+
+Lockfiles and generated files (`package-lock.json`, `yarn.lock`, `*.min.js`, …) are left out of the diff sent to the model so they don't eat the size budget; they still appear in the `git diff --stat` summary the model receives. Customize with `commitGenerator.excludeFiles`.
 
 OAuth tokens are stored in VS Code SecretStorage and refreshed automatically. Sign out with `ChatGPT Commit Gen: Sign out of ChatGPT`.
 
 ## Commands
 
 - `ChatGPT Commit Gen: Generate Commit Message`
+- `ChatGPT Commit Gen: Cancel Commit Message Generation` (only while generating)
 - `ChatGPT Commit Gen: Sign in with ChatGPT`
 - `ChatGPT Commit Gen: Sign out of ChatGPT`
 - `ChatGPT Commit Gen: Set Model`
@@ -24,6 +27,7 @@ OAuth tokens are stored in VS Code SecretStorage and refreshed automatically. Si
 | ------- | ------- | ----------- |
 | `commitGenerator.model` | `gpt-6-luna` | Model slug served by your ChatGPT plan. |
 | `commitGenerator.maxDiffChars` | `12000` | Max diff characters sent to the model. |
+| `commitGenerator.excludeFiles` | lockfiles, `*.min.js`, `*.min.css`, `*.map` | Git pathspec globs whose content is not sent to the model. |
 
 ## How it works
 
@@ -34,7 +38,7 @@ OAuth tokens are stored in VS Code SecretStorage and refreshed automatically. Si
 ## Privacy
 
 - Your OAuth tokens stay on your machine in VS Code SecretStorage; they are never written to settings or shipped in this repository.
-- Only your staged `git diff` is sent to OpenAI for generation.
+- Only your staged `git diff` (minus `excludeFiles` content) and its `--stat` summary are sent to OpenAI for generation.
 
 ## Development
 

@@ -45,12 +45,11 @@ export async function pickRepository(): Promise<Repository | undefined> {
   return picked ? repos[picked.index] : undefined;
 }
 
-/** Staged diff (unified patch) for the repository. */
-export function stagedDiff(repoRoot: string): Promise<string> {
+function runGit(repoRoot: string, args: string[]): Promise<string> {
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   cp.execFile(
     "git",
-    ["diff", "--cached", "--no-ext-diff", "--no-color"],
+    args,
     { cwd: repoRoot, maxBuffer: 64 * 1024 * 1024 },
     (error, stdout, stderr) => {
       if (error) {
@@ -61,4 +60,34 @@ export function stagedDiff(repoRoot: string): Promise<string> {
     },
   );
   return promise;
+}
+
+export interface StagedChanges {
+  /** `git diff --cached --stat`: lists every staged file, including excluded ones. */
+  stat: string;
+  /** Unified patch of staged changes, without files matching the exclude globs. */
+  diff: string;
+}
+
+/**
+ * Staged changes for the repository. `excludeGlobs` are git pathspec globs
+ * (e.g. `**\/package-lock.json`) whose content is left out of `diff`.
+ */
+export async function stagedChanges(
+  repoRoot: string,
+  excludeGlobs: readonly string[],
+): Promise<StagedChanges> {
+  const common = ["diff", "--cached", "--no-ext-diff", "--no-color"];
+  const pathspecs = [
+    ".",
+    ...excludeGlobs
+      .map((g) => g.trim())
+      .filter((g) => g.length > 0)
+      .map((g) => `:(exclude,glob)${g}`),
+  ];
+  const [stat, diff] = await Promise.all([
+    runGit(repoRoot, [...common, "--stat=120"]),
+    runGit(repoRoot, [...common, "--", ...pathspecs]),
+  ]);
+  return { stat, diff };
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Stream the commit message live into the input box.
+- While generating, the ✨ button turns into a spinner that cancels the request; the previous input is restored on cancel or error.
+- Prevent concurrent generations (e.g. double clicks).
+- New `commitGenerator.excludeFiles` setting: lockfiles and generated files are left out of the diff by default; a `git diff --stat` summary of all staged files is always sent.
+
 ## 0.3.0
 
 - One-time notification inviting users to star the repo on GitHub, shown after the first successful generation.

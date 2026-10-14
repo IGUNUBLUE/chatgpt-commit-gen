@@ -4,10 +4,10 @@ VS Code / VSCodium extension (public repo: github.com/IGUNUBLUE/chatgpt-commit-g
 
 ## Structure
 
-- `src/extension.ts` — activation, commands (`commitGenerator.generate`, `signIn`, `signOut`, `setModel`), progress + cancellation via AbortController.
-- `src/auth.ts` — `ChatGptAuth`: OAuth PKCE login against `auth.openai.com` (client_id `app_EMoamEEZ73f0CkXaXp7hrann`, callback `localhost:1455/auth/callback` fallback 1457), state/error validation, token refresh (JSON grant, account_id guard), SecretStorage persistence (`commitGenerator.chatgptTokens`), 30s HTTP timeouts.
-- `src/responses.ts` — `POST https://chatgpt.com/backend-api/codex/responses` (Responses API + SSE) with `Authorization`/`ChatGPT-Account-Id`/`originator` headers; retries once on 401 after refresh; `AbortSignal.any` timeout+cancel.
-- `src/git.ts` — built-in `vscode.git` API (repo pick + input box) and `git diff --cached` via `execFile`.
+- `src/extension.ts` — activation, commands (`commitGenerator.generate`, `cancel`, `signIn`, `signOut`, `setModel`), progress + cancellation via AbortController. Single generation at a time (`busy`/`active`); context key `commitGenerator.generating` swaps the ✨ `scm/title` button for a `$(loading~spin)` cancel button. Streams text into the input box, restores the previous value on cancel/error.
+- `src/auth.ts` — `ChatGptAuth`: OAuth PKCE login against `auth.openai.com` (client_id `app_EMoamEEZ73f0CkXaXp7hrann`, callback `localhost:1455/auth/callback` fallback 1457), state/error validation, token refresh (JSON grant, account_id guard, in-flight dedupe), SecretStorage persistence (`commitGenerator.chatgptTokens`), 30s HTTP timeouts.
+- `src/responses.ts` — `POST https://chatgpt.com/backend-api/codex/responses` (Responses API + SSE, parsed incrementally; `onText` callback per delta, `response.completed` text is authoritative) with `Authorization`/`ChatGPT-Account-Id`/`originator` headers; retries once on 401 after refresh; `AbortSignal.any` timeout+cancel.
+- `src/git.ts` — built-in `vscode.git` API (repo pick + input box) and `stagedChanges()`: `git diff --cached --stat` (all files) + `git diff --cached -- . ':(exclude,glob)<pattern>'` (setting `commitGenerator.excludeFiles`) via `execFile`.
 - `src/prompt.ts` — system prompt enforcing Conventional Commits 1.0.0.
 - `src/star.ts` — one-time GitHub star notification (`globalState` key `commitGenerator.starPromptShown`, synced).
 - `media/icon.svg|png` — extension icon (branch + sparkle, violet gradient).
@@ -26,7 +26,7 @@ codium --install-extension chatgpt-commit-gen-<version>.vsix
 
 - No runtime dependencies; Node globals only (`fetch`, `crypto`, `http`, `Promise.withResolvers`, `child_process`).
 - OAuth tokens live only in `vscode.SecretStorage`; never copied from `~/.codex/auth.json`, never written to settings.
-- Settings namespace: `commitGenerator.{model,maxDiffChars}`.
+- Settings namespace: `commitGenerator.{model,maxDiffChars,excludeFiles}`.
 - Generated messages MUST follow Conventional Commits 1.0.0.
 - The codex `/codex/responses` endpoint is undocumented; it serves only models allowed by the ChatGPT plan and may change.
 - Commits use Conventional Commits; no AI attribution trailers.

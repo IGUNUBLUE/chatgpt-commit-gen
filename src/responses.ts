@@ -10,6 +10,8 @@ export interface GenerateOptions {
   instructions: string;
   userText: string;
   signal?: AbortSignal;
+  /** Called with the accumulated text every time a new delta arrives. */
+  onText?: (textSoFar: string) => void;
 }
 
 interface SseEvent {
@@ -24,49 +26,63 @@ interface SseEvent {
   };
 }
 
-function sseEvents(body: string): SseEvent[] {
-  const events: SseEvent[] = [];
-  for (const block of body.split(/\r?\n\r?\n/)) {
-    const data = block
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trimStart())
-      .join("\n");
-    if (!data || data === "[DONE]") {
-      continue;
-    }
-    try {
-      events.push(JSON.parse(data) as SseEvent);
-    } catch {
-      // partial JSON line; ignore
-    }
+/** Parses one SSE block (lines between blank lines) into an event, if any. */
+function parseSseBlock(block: string): SseEvent | undefined {
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n");
+  if (!data || data === "[DONE]") {
+    return undefined;
   }
-  return events;
+  try {
+    return JSON.parse(data) as SseEvent;
+  } catch {
+    return undefined;
+  }
 }
 
-function extractText(events: SseEvent[]): string | undefined {
-  // Prefer the completed response object: it carries the full message item.
-  for (const event of events) {
-    if (event.type === "response.completed" && event.response?.output) {
-      for (const item of event.response.output) {
-        if (item.type === "message" && item.content) {
-          const text = item.content
-            .filter((c) => c.type === "output_text")
-            .map((c) => c.text ?? "")
-            .join("");
-          if (text.trim()) {
-            return text;
-          }
-        }
+/** Reads an SSE body incrementally, invoking `onEvent` as each event completes. */
+async function readSse(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: SseEvent) => void,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  const separator = /\r?\n\r?\n/;
+  let buffer = "";
+  for await (const chunk of body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    let match: RegExpExecArray | null;
+    while ((match = separator.exec(buffer)) !== null) {
+      const event = parseSseBlock(buffer.slice(0, match.index));
+      buffer = buffer.slice(match.index + match[0].length);
+      if (event) {
+        onEvent(event);
       }
     }
   }
-  // Fallback: concatenate output_text deltas.
-  const deltas = events
-    .filter((e) => e.type === "response.output_text.delta")
-    .map((e) => e.delta ?? "")
-    .join("");
-  return deltas.trim() ? deltas : undefined;
+  buffer += decoder.decode();
+  const last = parseSseBlock(buffer);
+  if (last) {
+    onEvent(last);
+  }
+}
+
+/** Full message text from a `response.completed` event, if present. */
+function completedText(event: SseEvent): string | undefined {
+  for (const item of event.response?.output ?? []) {
+    if (item.type === "message" && item.content) {
+      const text = item.content
+        .filter((c) => c.type === "output_text")
+        .map((c) => c.text ?? "")
+        .join("");
+      if (text.trim()) {
+        return text;
+      }
+    }
+  }
+  return undefined;
 }
 
 async function postResponses(
@@ -133,24 +149,34 @@ export async function generateWithSubscription(
     response = await postResponses(fresh, accountId, opts);
   }
 
-  const text = await response.text();
-  if (!response.ok) {
-    const detail = text.slice(0, 300);
+  if (!response.ok || !response.body) {
+    const detail = (await response.text()).slice(0, 300);
     throw new Error(`ChatGPT request failed (${response.status}): ${detail}`);
   }
 
-  const events = sseEvents(text);
-  const failure = events.find(
-    (e) => e.type === "response.failed" || e.type === "error",
-  );
+  let deltas = "";
+  let completed: string | undefined;
+  let failure: SseEvent | undefined;
+  await readSse(response.body, (event) => {
+    if (event.type === "response.output_text.delta" && event.delta) {
+      deltas += event.delta;
+      opts.onText?.(deltas);
+    } else if (event.type === "response.completed") {
+      completed = completedText(event);
+    } else if (event.type === "response.failed" || event.type === "error") {
+      failure ??= event;
+    }
+  });
+
   if (failure) {
     throw new Error(
       `ChatGPT request failed: ${failure.error?.message ?? "unknown error"}`,
     );
   }
-  const output = extractText(events);
+  // The completed response object is authoritative; deltas are the fallback.
+  const output = (completed ?? deltas).trim();
   if (!output) {
     throw new Error("ChatGPT returned an empty commit message.");
   }
-  return output.trim();
+  return output;
 }
