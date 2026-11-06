@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- Replace the Codex CLI OAuth flow with the "Sign in with ChatGPT" agent flow: dynamic client + per-install host id, `resource.invoke chatgpt.tokens.use.direct` scopes, verified `id_token` (JWKS RS256, nonce, audience, account pinning), loopback callback on a free port.
+- Generation now calls `api.openai.com/v1/responses` with the Bearer token only (no `ChatGPT-Account-Id`); usage-limit errors get a clear message.
+- **Breaking:** existing sessions are discarded; sign in again.
+
 ## 0.4.0
 
 - Stream the commit message live into the input box.

@@ -4,7 +4,7 @@ VS Code / VSCodium extension that generates [Conventional Commits](https://www.c
 
 ## Usage
 
-1. Run `ChatGPT Commit Gen: Sign in with ChatGPT` — a browser window opens on `auth.openai.com`; approve the sign-in (same OAuth flow as Codex CLI).
+1. Run `ChatGPT Commit Gen: Sign in with ChatGPT` — a browser window opens on `auth.openai.com`; approve the sign-in ("Sign in with ChatGPT" for third-party agents).
 2. Stage your changes in the Source Control view.
 3. Click the ✨ button in the Source Control title bar (or run `ChatGPT Commit Gen: Generate Commit Message`).
 4. The message streams live into the commit input box. While it's generating, the ✨ button becomes a spinner; click it to cancel (your previous input is restored).
@@ -31,9 +31,9 @@ OAuth tokens are stored in VS Code SecretStorage and refreshed automatically. Si
 
 ## How it works
 
-- **Login**: OAuth PKCE against `auth.openai.com` with a localhost callback (ports 1455/1457), identical to `codex login`. The extension reuses Codex CLI's public OAuth client id — the same approach opencode uses for ChatGPT subscriptions.
-- **Generation**: `POST https://chatgpt.com/backend-api/codex/responses` with the OAuth access token + `ChatGPT-Account-Id`, parsed via SSE.
-- **Caveat**: that endpoint serves only models allowed by your ChatGPT plan and is undocumented; OpenAI may change it.
+- **Login**: OAuth authorization code + PKCE against `auth.openai.com/api/accounts`, using a dynamic agent client bound to a per-install host id (`ext_agent_host_id`). The callback is a loopback server on `127.0.0.1` with a free port. ChatGPT issues the client id in the callback; the `id_token` is verified (RS256 signature via JWKS, issuer, audience, expiry, nonce) and the session is pinned to that account. Scopes: `resource.invoke chatgpt.tokens.use.direct`.
+- **Generation**: `POST https://api.openai.com/v1/responses` with the access token as Bearer, streamed via SSE.
+- **Caveat**: this subscription access is experimental. It serves only models and usage allowed by your ChatGPT plan, and OpenAI may change it. If you signed in with an earlier version, sign in again.
 
 ## Privacy
 

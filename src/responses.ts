@@ -1,8 +1,14 @@
-import * as crypto from "node:crypto";
 import type { ChatGptAuth } from "./auth";
 
-const ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
+const ENDPOINT = "https://api.openai.com/v1/responses";
 const HTTP_TIMEOUT_MS = 90 * 1000;
+const USER_AGENT = "chatgpt-commit-gen";
+
+/** Error codes the subscription backend reports when plan usage runs out. */
+const USAGE_ERRORS = new Set([
+  "subscription_sharing_usage_limit_exceeded",
+  "subscription_sharing_usage_unavailable",
+]);
 
 export interface GenerateOptions {
   auth: ChatGptAuth;
@@ -17,8 +23,10 @@ export interface GenerateOptions {
 interface SseEvent {
   type?: string;
   delta?: string;
-  error?: { message?: string };
+  error?: { message?: string; code?: string };
   response?: {
+    status?: string;
+    error?: { message?: string; code?: string };
     output?: {
       type?: string;
       content?: { type?: string; text?: string }[];
@@ -87,7 +95,6 @@ function completedText(event: SseEvent): string | undefined {
 
 async function postResponses(
   accessToken: string,
-  accountId: string,
   opts: GenerateOptions,
 ): Promise<Response> {
   const signals = [AbortSignal.timeout(HTTP_TIMEOUT_MS)];
@@ -100,16 +107,19 @@ async function postResponses(
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
-      "ChatGPT-Account-Id": accountId,
-      originator: "codex_cli_rs",
-      "session-id": crypto.randomUUID(),
-      "OpenAI-Beta": "responses=experimental",
       Accept: "text/event-stream",
+      "User-Agent": USER_AGENT,
     },
+    // The subscription transport takes the system prompt as a `developer`
+    // input item, requires `store: false` and streaming, and rejects
+    // sampling/limit parameters.
     body: JSON.stringify({
       model: opts.model,
-      instructions: opts.instructions,
       input: [
+        {
+          role: "developer",
+          content: [{ type: "input_text", text: opts.instructions }],
+        },
         {
           role: "user",
           content: [{ type: "input_text", text: opts.userText }],
@@ -117,9 +127,16 @@ async function postResponses(
       ],
       store: false,
       stream: true,
-      include: [],
     }),
   });
+}
+
+function failureMessage(event: SseEvent): string {
+  const error = event.error ?? event.response?.error;
+  if (error?.code && USAGE_ERRORS.has(error.code)) {
+    return "Your ChatGPT plan usage limit was reached or is unavailable. Try again later.";
+  }
+  return error?.message ?? "unknown error";
 }
 
 /** Calls the ChatGPT-subscription Responses endpoint; retries once after 401 + refresh. */
@@ -127,12 +144,11 @@ export async function generateWithSubscription(
   opts: GenerateOptions,
 ): Promise<string> {
   const accessToken = await opts.auth.accessToken();
-  const accountId = opts.auth.accountId();
-  if (!accessToken || !accountId) {
+  if (!accessToken) {
     throw new Error("Not signed in. Run: Commit Generator: Sign in with ChatGPT");
   }
 
-  let response = await postResponses(accessToken, accountId, opts);
+  let response = await postResponses(accessToken, opts);
   if (response.status === 401) {
     // Release the unused body before retrying.
     await response.body?.cancel();
@@ -146,7 +162,7 @@ export async function generateWithSubscription(
     if (!fresh) {
       throw new Error("Token refresh produced no access token.");
     }
-    response = await postResponses(fresh, accountId, opts);
+    response = await postResponses(fresh, opts);
   }
 
   if (!response.ok || !response.body) {
@@ -163,14 +179,18 @@ export async function generateWithSubscription(
       opts.onText?.(deltas);
     } else if (event.type === "response.completed") {
       completed = completedText(event);
-    } else if (event.type === "response.failed" || event.type === "error") {
+    } else if (
+      event.type === "response.failed" ||
+      event.type === "response.incomplete" ||
+      event.type === "error"
+    ) {
       failure ??= event;
     }
   });
 
   if (failure) {
     throw new Error(
-      `ChatGPT request failed: ${failure.error?.message ?? "unknown error"}`,
+      `ChatGPT request failed: ${failureMessage(failure)}`,
     );
   }
   // The completed response object is authoritative; deltas are the fallback.
